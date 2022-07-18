@@ -1,0 +1,71 @@
+<MainView>
+	Image:
+		id: img
+		size_hint: 1,1
+		pos_hint:{'top':1}
+
+	Label:
+		id: labelText
+		size_hint: 1,1
+		pos_hint:{'top':1}
+		font_size: '100sp'
+		halign: 'center'
+		valign: 'middle'
+		text: root.myText
+
+	BoxLayout:
+		id: box_black
+		pos_hint:{'x':0.1,'y':0.1}
+		size_hint: 0, 0
+		canvas:
+			Color:
+				rgb: 0,0,0
+			Ellipse:
+				pos: (box_black.x, -box_black.width) if box_black.height == 0 else (box_black.x, box_black.y)
+				size: box_black.width, box_black.width
+		
+		Label:
+			id: text_black
+			text: ''
+			font_size: '30sp'
+			color: 'white'
+			halign: 'center'
+			valign: 'middle'
+
+	BoxLayout:
+		id: box_green
+		pos_hint:{'x':0.4,'y':0.1}
+		size_hint: 0, 0 
+		canvas:
+			Color:
+				rgb: 0,255,0
+			Ellipse:
+				pos: (box_green.x, -box_green.width) if box_green.height == 0 else (box_green.x, box_green.y)
+				size: box_green.width , box_green.width
+		
+		Label:
+			id: text_green
+			text: ''
+			font_size: '50sp'
+			color: 'black'
+			halign: 'center'
+			valign: 'middle'
+
+	BoxLayout:
+		id: box_red
+		pos_hint:{'x':0.7,'y':0.1}
+		size_hint: 0, 0
+		canvas:
+			Color:
+				rgb: 255,0,0
+			Ellipse:
+				pos: (box_red.x, -box_red.width) if box_red.height == 0 else (box_red.x, box_red.y)
+				size: box_red.width , box_red.width
+		
+		Label:
+			id: text_red
+			text: ''
+			font_size: '50sp'
+			color: 'black'
+			halign: 'center'
+			valign: 'middle'

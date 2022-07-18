@@ -1,0 +1,28 @@
+<MainView>
+	Image:
+		id: img
+		size_hint: 1,1
+		pos_hint:{'top':1}
+
+	Label:
+		id: labelText
+		size_hint: 1,0.75
+		pos_hint:{'top':1}
+		font_size: '50sp'
+		halign: 'center'
+		valign: 'middle'
+		text: root.myText
+
+	Button:
+		id: btn
+		size_hint: 0.5,0.25
+		pos_hint: {'y':0}
+		text: 'Start/Stop'
+		on_press: app.stop()
+
+    Button:
+		id: btn1
+        text: 'Capture'
+		size_hint: 0.5,0.25
+		pos_hint: {'x':0.5, 'y':0}
+        on_press: root.capture()

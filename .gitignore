@@ -1,3 +1,4 @@
 #exclude folder fotos
 /fotos*/
 ./fotos*/
+/masks_and_overlays/

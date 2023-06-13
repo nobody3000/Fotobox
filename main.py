@@ -160,11 +160,13 @@ class MainView(FloatLayout):
 
     def on_Toni(self):
         self.unreg_buttons()
+        self.myText = 'Hintergrund wird geladen'
         self.create_overlay('overlay_Toni.png')
         self.reg_buttons(State.IDLE)
 
     def on_Ulli(self):
         self.unreg_buttons()
+        self.myText = 'Hintergrund wird geladen'
         self.create_overlay('overlay_Ulli.png')
         self.reg_buttons(State.IDLE)
 
@@ -242,6 +244,7 @@ class MainView(FloatLayout):
                 self.stop_second_print_thread = False
                 return
 
+        self.start_cam_thread()
         self.unreg_buttons()
         self.reg_buttons(State.IDLE)
 

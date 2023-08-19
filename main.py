@@ -7,16 +7,28 @@ from kivy.graphics.texture import Texture
 from kivy.clock import Clock
 from kivy.properties import StringProperty
 from kivy.properties import ObjectProperty
-from picamera import PiCamera
-from picamera.array import PiRGBArray
 from threading import Thread
 import cups
 import time
+import argparse
 import cv2
 import numpy as np
 import math
 from gpiozero import Button
 from enum import Enum
+
+
+import gphoto2 as gp
+import io
+import locale
+import logging
+import os
+import subprocess
+import sys
+
+from PIL import Image
+
+#from PIL import Image
 
 class State(Enum):
     START = 0
@@ -44,7 +56,7 @@ class MainView(FloatLayout):
     picSmallRes = (1650,1120)
     prewRes = (1504,1024)
     #videoRes = (752,512)
-    videoRes = (1280,960)
+    videoRes = (1056,704)
     overlay = None
     alpha_mask = None
     alpha_channel = None
@@ -53,8 +65,9 @@ class MainView(FloatLayout):
     first_print = False
 
     # update image with video resolution
-    def update_texture(self,frame):
-        frame=cv2.flip(self.video_data,-1)
+    def update_texture(self,frame):        
+        #frame=cv2.flip(self.video_data,-1)
+        frame=cv2.flip(cv2.rotate(self.video_data,cv2.ROTATE_180),-1)
         buffer=frame.tobytes()
         texture1=Texture.create(size=self.videoRes, colorfmt="rgb")
         texture1.blit_buffer(buffer, colorfmt='rgb', bufferfmt='ubyte')
@@ -72,26 +85,22 @@ class MainView(FloatLayout):
         self.ids['img'].texture=texture1
 
     # read from viedo port and update view
-    def camera_process(self):
-        self.piCam.resolution = self.videoRes
-        rawcapture=PiRGBArray(self.piCam)
-
-        for frame in self.piCam.capture_continuous(rawcapture,format="rgb",use_video_port=True):
-            frame_array = rawcapture.array
-            self.video_data=frame_array
+    def camera_process(self):        
+        # capture preview image (not saved to camera memory card)        
+        while(self.running):
+            camera_file = gp.check_result(gp.gp_camera_capture_preview(self.camera))
+            file_data = gp.check_result(gp.gp_file_get_data_and_size(camera_file))
+            image = Image.open(io.BytesIO(file_data))
+            self.video_data = np.asarray(image)
             Clock.schedule_once(self.update_texture)
-            rawcapture.truncate(0)
-            if(not self.running):
-                break
 
-        self.piCam.resolution = self.picRes
 
     # create instance of buttons and register all
     def init_buttons(self):
         self.blackBtn = Button(2)
         self.greenBtn = Button(4)
         self.redBtn = Button(3)
-        self.reg_buttons(State.START)
+        self.reg_buttons(State.IDLE)
         #self.reg_buttons(State.IDLE)
 
     # Register interrupts of all buttons
@@ -108,7 +117,7 @@ class MainView(FloatLayout):
             self.ids['text_red'].text = 'Ulli'
         elif state == State.IDLE:
             self.first_print = True
-            #self.start_cam_thread()
+            self.start_cam_thread()
             self.greenBtn.when_pressed = self.on_green
             self.ids['box_green'].size_hint = (0.2, 0.25)
             self.ids['text_green'].text = 'Start'
@@ -161,13 +170,13 @@ class MainView(FloatLayout):
     def on_Toni(self):
         self.unreg_buttons()
         self.myText = 'Hintergrund wird geladen'
-        self.create_overlay('overlay_Toni.png')
+        self.create_overlay('masks_and_overlays/overlay_Toni.png')
         self.reg_buttons(State.IDLE)
 
     def on_Ulli(self):
         self.unreg_buttons()
         self.myText = 'Hintergrund wird geladen'
-        self.create_overlay('overlay_Ulli.png')
+        self.create_overlay('masks_and_overlays/overlay_Ulli.png')
         self.reg_buttons(State.IDLE)
 
     def on_black(self):
@@ -266,25 +275,40 @@ class MainView(FloatLayout):
                 if num_of_secs == 0:
                     self.running = False #freeze preview
 
+            self.running = False
             self.camera_thread.join()
+            try:
+                file_path = self.camera.capture(gp.GP_CAPTURE_IMAGE)
 
-            self.piCam.capture(output,format='bgr')
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                target = os.path.join('/home/pi/Fotobox/joundjenny', timestamp+'_'+file_path.name)
+                camera_file = self.camera.file_get(file_path.folder, file_path.name, gp.GP_FILE_TYPE_NORMAL)
+                camera_file.save(target)
 
-            self.lastImage = output
+                file_data = gp.check_result(gp.gp_file_get_data_and_size(camera_file))
+                image = Image.open(io.BytesIO(file_data))
+                output = rgba = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2RGB)
+                output = cv2.rotate(output,cv2.ROTATE_180)
 
-            Clock.schedule_once(self.update_textureLastImage)
+                self.lastImages[self.currentImg] = output
+                self.lastImage = output
 
-            self.start_undistort_thread(self.lastImage, self.currentImg)
+                Clock.schedule_once(self.update_textureLastImage)
 
-            self.currentImg += 1
+                #self.start_undistort_thread(self.lastImage, self.currentImg)
+
+                self.currentImg += 1
+
+            except:
+                print('Error Print')
 
             time.sleep(2)
 
             if self.currentImg <= 2:
                 self.start_cam_thread()
 
-        if self.undisort_thread is not None:
-            self.undisort_thread.join()
+        #if self.undisort_thread is not None:
+            #self.undisort_thread.join()
 
         self.create_collage()
 
@@ -296,7 +320,6 @@ class MainView(FloatLayout):
 
         resized[0] = cv2.resize(self.lastImages[0], self.picSmallRes, interpolation = cv2.INTER_AREA)
         resized[1] = cv2.resize(self.lastImages[1], self.picSmallRes, interpolation = cv2.INTER_AREA)
-        resized[2] = cv2.resize(self.lastImages[2], self.picSmallRes, interpolation = cv2.INTER_AREA)
         resized[2] = cv2.resize(self.lastImages[2], self.picSmallRes, interpolation = cv2.INTER_AREA)
 
         # Crate collage
@@ -331,9 +354,9 @@ class MainView(FloatLayout):
     def saveImage(self, image, print=False):
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         if print:
-            filename = "/home/pi/Fotobox/fotos/prints/IMG_{}.jpeg".format(timestamp)
+            filename = "/home/pi/Fotobox/joundjenny/prints/IMG_{}.jpeg".format(timestamp)
         else:
-            filename = "/home/pi/Fotobox/fotos/IMG_{}.jpeg".format(timestamp)
+            filename = "/home/pi/Fotobox/joundjenny/IMG_{}.jpeg".format(timestamp)
 
         cv2.imwrite(filename,image)
 
@@ -370,11 +393,11 @@ class MainView(FloatLayout):
                 self.myText = 'Foto wird gedruckt (' + str(wait) + ' Sek)'
                 time.sleep(1)
                 wait -= 1
-            if self.first_print:
-                self.first_print = False
-                self.reg_buttons(State.SECOND_PRINT)
-            else:
-                self.reg_buttons(State.DONE)
+            #if self.first_print:
+            #    self.first_print = False
+            #    self.reg_buttons(State.SECOND_PRINT)
+            #else:
+            self.reg_buttons(State.DONE)
 
     # rotate image
     def rotation(self, image, angleInDegrees):
@@ -412,7 +435,44 @@ class PhotoboxApp(App):
     def build(self):
         Config.set("graphics", "show_cursor", 0)
         layout = MainView()
-        layout.piCam=PiCamera()
+        
+        #locale.setlocale(locale.LC_ALL, '')
+        #logging.basicConfig(
+        #    format='%(levelname)s: %(name)s: %(message)s', level=logging.WARNING)
+        #layout.callback_obj = gp.check_result(gp.use_python_logging())
+        layout.camera = gp.check_result(gp.gp_camera_new())
+        gp.check_result(gp.gp_camera_init(layout.camera))
+        # required configuration will depend on camera type!
+        print('Checking camera config')
+        
+        # get configuration tree
+        layout.config = gp.check_result(gp.gp_camera_get_config(layout.camera))
+        # find the image format config item
+        # camera dependent - 'imageformat' is 'imagequality' on some
+        OK, layout.image_format = gp.gp_widget_get_child_by_name(layout.config, 'imageformat')
+        if OK >= gp.GP_OK:
+            # get current setting
+            value = gp.check_result(gp.gp_widget_get_value(layout.image_format))
+            # make sure it's not raw
+            if 'raw' in value.lower():
+                print('Cannot preview raw images')
+                return 1
+        '''
+        # find the capture size class config item
+        # need to set this on my Canon 350d to get preview to work at all
+        OK, layout.capture_size_class = gp.gp_widget_get_child_by_name(layout.config, 'capturesizeclass')
+        if OK >= gp.GP_OK:
+            # set value
+            layout.value = gp.check_result(gp.gp_widget_get_choice(layout.capture_size_class, 2))
+            gp.check_result(gp.gp_widget_set_value(layout.capture_size_class, value))
+            # set config
+            gp.check_result(gp.gp_camera_set_config(layout.camera, layout.config))
+
+        OK, capture_size_class = gp.gp_widget_get_child_by_name(config, 'capturesizeclass')
+        if OK >= gp.GP_OK:
+            # set value
+            value = gp.check_result(gp.gp_widget_get_choice(capture_size_class, 2))
+        '''
         layout.init_buttons()
         layout.distortionVars = np.load('picamCalibration.npz')
         layout.mtx = layout.distortionVars['mtx']
@@ -434,7 +494,7 @@ class PhotoboxApp(App):
         # layout.overlay[:,:,:] = overlay
         # layout.alpha_mask = (1-layout.alpha_mask)
 
-        layout.create_overlay('overlay.png')
+        layout.create_overlay('masks_and_overlays/overlay.png')
 
         return layout
 
